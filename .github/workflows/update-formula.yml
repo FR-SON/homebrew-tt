@@ -1,0 +1,128 @@
+name: Update Formula
+
+on:
+  repository_dispatch:
+    types: [formula-update]
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    env:
+      SOURCE_REPO: FR-SON/tt
+    steps:
+      - name: Checkout tap repo
+        uses: actions/checkout@v6
+
+      - name: Extract version from dispatch
+        id: version
+        run: |
+          TAG="${{ github.event.client_payload.tag }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Download release binaries and provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p artifacts
+          cd artifacts
+          for target in darwin-amd64 darwin-arm64 linux-amd64 linux-arm64; do
+            gh release download "${{ steps.version.outputs.tag }}" \
+              --repo "$SOURCE_REPO" \
+              --pattern "tt-${target}" \
+              --pattern "tt-${target}.intoto.jsonl" \
+              --dir .
+          done
+          ls -la
+
+      - name: Install SLSA Verifier
+        uses: slsa-framework/slsa-verifier/actions/installer@v2.7.1
+
+      - name: Verify SLSA provenance for all binaries
+        run: |
+          cd artifacts
+          for target in darwin-amd64 darwin-arm64 linux-amd64 linux-arm64; do
+            echo "Verifying tt-${target}..."
+            slsa-verifier verify-artifact "tt-${target}" \
+              --provenance-path "tt-${target}.intoto.jsonl" \
+              --source-uri "github.com/${SOURCE_REPO}" \
+              --source-tag "${{ steps.version.outputs.tag }}"
+          done
+          echo "All binaries verified."
+
+      - name: Compute SHA256 hashes
+        id: hashes
+        run: |
+          cd artifacts
+          echo "darwin_arm64=$(sha256sum tt-darwin-arm64 | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "darwin_amd64=$(sha256sum tt-darwin-amd64 | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "linux_arm64=$(sha256sum tt-linux-arm64 | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "linux_amd64=$(sha256sum tt-linux-amd64 | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Generate formula
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          HASH_DARWIN_ARM64: ${{ steps.hashes.outputs.darwin_arm64 }}
+          HASH_DARWIN_AMD64: ${{ steps.hashes.outputs.darwin_amd64 }}
+          HASH_LINUX_ARM64: ${{ steps.hashes.outputs.linux_arm64 }}
+          HASH_LINUX_AMD64: ${{ steps.hashes.outputs.linux_amd64 }}
+        run: |
+          cat > Formula/timetrack.rb << 'FORMULA'
+          class Timetrack < Formula
+            desc "CLI time-tracking tool"
+            homepage "https://github.com/FR-SON/tt"
+            version "@@VERSION@@"
+            license "MIT"
+
+            on_macos do
+              on_arm do
+                url "https://github.com/FR-SON/tt/releases/download/v#{version}/tt-darwin-arm64"
+                sha256 "@@HASH_DARWIN_ARM64@@"
+              end
+              on_intel do
+                url "https://github.com/FR-SON/tt/releases/download/v#{version}/tt-darwin-amd64"
+                sha256 "@@HASH_DARWIN_AMD64@@"
+              end
+            end
+
+            on_linux do
+              on_arm do
+                url "https://github.com/FR-SON/tt/releases/download/v#{version}/tt-linux-arm64"
+                sha256 "@@HASH_LINUX_ARM64@@"
+              end
+              on_intel do
+                url "https://github.com/FR-SON/tt/releases/download/v#{version}/tt-linux-amd64"
+                sha256 "@@HASH_LINUX_AMD64@@"
+              end
+            end
+
+            def install
+              bin.install Dir["tt-*"].first => "tt"
+            end
+
+            test do
+              assert_match "tt version #{version}", shell_output("#{bin}/tt version")
+            end
+          end
+          FORMULA
+          sed -i 's/^          //' Formula/timetrack.rb
+          sed -i "s/@@VERSION@@/$VERSION/" Formula/timetrack.rb
+          sed -i "s/@@HASH_DARWIN_ARM64@@/$HASH_DARWIN_ARM64/" Formula/timetrack.rb
+          sed -i "s/@@HASH_DARWIN_AMD64@@/$HASH_DARWIN_AMD64/" Formula/timetrack.rb
+          sed -i "s/@@HASH_LINUX_ARM64@@/$HASH_LINUX_ARM64/" Formula/timetrack.rb
+          sed -i "s/@@HASH_LINUX_AMD64@@/$HASH_LINUX_AMD64/" Formula/timetrack.rb
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/timetrack.rb
+          if git diff --cached --quiet; then
+            echo "No changes to formula."
+          else
+            git commit -m "feat: update timetrack to ${{ steps.version.outputs.version }}"
+            git push
+          fi
