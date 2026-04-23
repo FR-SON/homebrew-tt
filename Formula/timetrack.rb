@@ -1,28 +1,28 @@
 class Timetrack < Formula
   desc "CLI time-tracking tool"
   homepage "https://github.com/FR-SON/tt"
-  version "0.2.3"
+  version "0.2.4"
   license "MIT"
 
   on_macos do
     on_arm do
       url "https://github.com/FR-SON/tt/releases/download/v#{version}/tt-darwin-arm64"
-      sha256 "92fe9c4c5b5977480b228e34c340184457932ccbec7a795e1e898753a54be569"
+      sha256 "34ab5959d188ec1b5c5e98d71c1b1b762559130c76a47cfb44f21aa0c39d94c0"
     end
     on_intel do
       url "https://github.com/FR-SON/tt/releases/download/v#{version}/tt-darwin-amd64"
-      sha256 "bc156485283f9266d6dd4cd9cc963430728d0e949fdcc398f52b207503eb7fae"
+      sha256 "294db33c77fb15b7f17981477685e29b9222b62280f372a8b8309faf54039fe7"
     end
   end
 
   on_linux do
     on_arm do
       url "https://github.com/FR-SON/tt/releases/download/v#{version}/tt-linux-arm64"
-      sha256 "c44e7d5b64479d55bd9e3ea76cf2a3ca679f74904da2d309e4d9026ce236502e"
+      sha256 "75ddf1ff460793276673ce6bdc78092760195a19f26068c27f6d5095585367f1"
     end
     on_intel do
       url "https://github.com/FR-SON/tt/releases/download/v#{version}/tt-linux-amd64"
-      sha256 "f3d43e9545310d762d234eb1b293def2fdac9ca51bd3f96981dd63fffa2dcacc"
+      sha256 "4714331ece259e27342fba2d968af6b9237d5ff7ea39eb690a7675e72d884adc"
     end
   end
 
